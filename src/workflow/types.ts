@@ -2,7 +2,11 @@ export type WorkflowJson = {
   nodes: {
     id: string
     label: string
-    type?: 'input' | 'default'
+    type?: 'input' | 'default' | 'condition'
   }[]
-  edges: [string, string][]
+  edges: {
+    source: string
+    target: string
+    label?: string
+  }[]
 }

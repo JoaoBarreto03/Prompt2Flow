@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { runLLM } from './ai/ollama'
 import ReactFlow, {
   Background,
   Controls,
@@ -10,13 +11,14 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
-import { mockAI } from './workflow/mockAI'
 import { buildWorkflow } from './workflow/buildWorkflow'
 import type { WorkflowJson } from './workflow/types'
 
 function FlowCanvas() {
   const [prompt, setPrompt] = useState('')
   const [workflowJson, setWorkflowJson] = useState<WorkflowJson | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
@@ -26,9 +28,40 @@ function FlowCanvas() {
     [setEdges]
   )
 
-  const generateWorkflow = () => {
-    const result = mockAI(prompt)
-    setWorkflowJson(result)
+  const generateWorkflow = async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const result = await handleGenerate(prompt)
+      console.log('Generated Workflow JSON:', result)
+      setWorkflowJson(result)
+    } catch (err) {
+      setError('Failed to generate workflow. Please try again.')
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleGenerate(prompt: string): Promise<WorkflowJson> {
+    const text = await runLLM(prompt)
+    
+    try {
+      // Tentar parsear o JSON retornado pela LLM
+      const workflow = JSON.parse(text) as WorkflowJson
+      return workflow
+    } catch (parseError) {
+      console.error('Failed to parse LLM response:', text)
+      throw new Error('Invalid workflow format from AI')
+    }
+  }
+  const resetCanvas = () => {
+    setPrompt('')
+    setWorkflowJson(null)
+    setNodes([])
+    setEdges([])
+    setError(null)
   }
 
   useEffect(() => {
@@ -70,25 +103,52 @@ function FlowCanvas() {
 
         <button
           onClick={generateWorkflow}
-          disabled={!prompt.trim()}
+          disabled={!prompt.trim() || loading}
           style={{
             marginTop: 12,
             width: '100%',
             padding: 12,
             fontSize: 16,
             fontWeight: 'bold',
-            backgroundColor: prompt.trim() ? '#007bff' : '#a09f9fff',
+            backgroundColor: loading ? '#6c757d' : (prompt.trim() ? '#007bff' : '#a09f9fff'),
             color: 'white',
             border: 'none',
             borderRadius: 4,
-            cursor: prompt.trim() ? 'pointer' : 'not-allowed'
+            cursor: (prompt.trim() && !loading) ? 'pointer' : 'not-allowed',
+            transition: 'background-color 0.2s'
           }}
         >
-          🚀 Generate Workflow
+          {loading ? '⏳ Generating...' : '🚀 Generate Workflow'}
         </button>
 
         {workflowJson && (
-          <div style={{ marginTop: 20, fontSize: 12, color: '#666' }}>
+          <button
+            onClick={resetCanvas}
+            style={{
+              marginTop: 8,
+              width: '100%',
+              padding: 10,
+              fontSize: 14,
+              fontWeight: 'normal',
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer'
+            }}
+          >
+            🔄 Reset Canvas
+          </button>
+        )}
+
+        {error && (
+          <div style={{ marginTop: 16, padding: 12, backgroundColor: '#f8d7da', color: '#721c24', borderRadius: 4, fontSize: 14 }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {workflowJson && !error && (
+          <div style={{ marginTop: 16, fontSize: 12, color: '#28a745' }}>
             ✅ Generated {workflowJson.nodes.length} nodes and {workflowJson.edges.length} edges
           </div>
         )}
